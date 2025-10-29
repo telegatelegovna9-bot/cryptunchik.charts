@@ -1,0 +1,12 @@
+python-telegram-bot==22.5
+pytz==2024.1
+apscheduler==3.10.4
+pandas==2.2.2
+numpy==1.26.4
+aiohttp==3.9.5
+mplfinance==0.12.10b0
+TA-Lib==0.4.28
+matplotlib==3.9.2
+
+
+
