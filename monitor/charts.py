@@ -6,7 +6,8 @@ import matplotlib.pyplot as plt
 import mplfinance as mpf
 from monitor.logger import log
 import traceback
-import pandas_ta as ta  # <-- НОВЫЙ ИМПОРТ
+import pandas_ta as ta  # Работает с Python 3.10
+
 
 def create_chart(df_plot, symbol, timeframe='5m'):
     try:
@@ -20,27 +21,34 @@ def create_chart(df_plot, symbol, timeframe='5m'):
 
         # --- MACD ---
         try:
-            macd = df_plot.ta.macd(fast=12, slow=26, signal=9)
-            df_plot['macd'] = macd['MACD_12_26_9']
-            df_plot['signal'] = macd['MACDs_12_26_9']
-            df_plot['macd_hist'] = macd['MACDh_12_26_9']
+            macd = ta.macd(df_plot['close'], fast=12, slow=26, signal=9)
+            if macd is not None and not macd.empty:
+                df_plot['macd'] = macd['MACD_12_26_9']
+                df_plot['signal'] = macd['MACDs_12_26_9']
+                df_plot['macd_hist'] = macd['MACDh_12_26_9']
+            else:
+                raise ValueError("MACD вернул пустой результат")
         except Exception as e:
             log(f"Ошибка MACD для {symbol}: {e}")
             df_plot['macd'] = df_plot['signal'] = df_plot['macd_hist'] = np.nan
 
         # --- RSI ---
         try:
-            df_plot['rsi'] = df_plot.ta.rsi(length=14)
+            rsi = ta.rsi(df_plot['close'], length=14)
+            df_plot['rsi'] = rsi if rsi is not None else np.nan
         except Exception as e:
             log(f"Ошибка RSI для {symbol}: {e}")
             df_plot['rsi'] = np.nan
 
         # --- Bollinger Bands ---
         try:
-            bb = df_plot.ta.bbands(length=20, std=2)
-            df_plot['sma20'] = bb['BBM_20_2.0']
-            df_plot['upper'] = bb['BBU_20_2.0']
-            df_plot['lower'] = bb['BBL_20_2.0']
+            bb = ta.bbands(df_plot['close'], length=20, std=2)
+            if bb is not None and not bb.empty:
+                df_plot['sma20'] = bb['BBM_20_2.0']
+                df_plot['upper'] = bb['BBU_20_2.0']
+                df_plot['lower'] = bb['BBL_20_2.0']
+            else:
+                raise ValueError("BBANDS вернул пустой результат")
         except Exception as e:
             log(f"Ошибка Bollinger для {symbol}: {e}")
             df_plot['sma20'] = df_plot['upper'] = df_plot['lower'] = np.nan
@@ -56,7 +64,7 @@ def create_chart(df_plot, symbol, timeframe='5m'):
             ])
 
         # RSI → панель 1
-        if not df_plot['rsi'].isna().all():
+        if 'rsi' in df_plot and not df_plot['rsi'].isna().all():
             add_plots.append(mpf.make_addplot(df_plot['rsi'], panel=1, color='blue', ylabel='RSI'))
 
         # MACD → панель 2
@@ -87,7 +95,7 @@ def create_chart(df_plot, symbol, timeframe='5m'):
         plot_kwargs = {
             'type': 'candle',
             'style': 'yahoo',
-            'title': f"{symbol} ({timeframe}) - {len(df_plot)} candles",
+            'title': f"{symbol} ({timeframe})",
             'ylabel': 'Price (USDT)',
             'volume': True,
             'volume_panel': volume_panel,
@@ -116,7 +124,7 @@ def create_chart(df_plot, symbol, timeframe='5m'):
         fig.savefig(buf, format='png', bbox_inches='tight', dpi=120, facecolor='white')
         plt.close('all')
         buf.seek(0)
-        log(f"График {symbol} создан (pandas_ta)")
+        log(f"График {symbol} создан")
         return buf
 
     except Exception as e:
@@ -124,3 +132,4 @@ def create_chart(df_plot, symbol, timeframe='5m'):
         log(f"Traceback: {traceback.format_exc()}")
         plt.close('all')
         return None
+
