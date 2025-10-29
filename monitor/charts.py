@@ -5,16 +5,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import mplfinance as mpf
 from monitor.logger import log
-import talib
 import traceback
-
+import pandas_ta as ta  # <-- НОВЫЙ ИМПОРТ
 
 def create_chart(df_plot, symbol, timeframe='5m'):
-    """
-    Создаёт график: свечи + MACD + RSI + Bollinger + Фибоначчи слева.
-    ADX УДАЛЁН.
-    Возвращает BytesIO буфер с PNG.
-    """
     try:
         log(f"Создание графика для {symbol}, свечей: {len(df_plot)}")
         if len(df_plot) < 2:
@@ -26,38 +20,34 @@ def create_chart(df_plot, symbol, timeframe='5m'):
 
         # --- MACD ---
         try:
-            macd_line, signal_line, macd_hist = talib.MACD(
-                df_plot['close'].values, fastperiod=12, slowperiod=26, signalperiod=9
-            )
-            df_plot['macd'] = macd_line
-            df_plot['signal'] = signal_line
-            df_plot['macd_hist'] = macd_hist
+            macd = df_plot.ta.macd(fast=12, slow=26, signal=9)
+            df_plot['macd'] = macd['MACD_12_26_9']
+            df_plot['signal'] = macd['MACDs_12_26_9']
+            df_plot['macd_hist'] = macd['MACDh_12_26_9']
         except Exception as e:
             log(f"Ошибка MACD для {symbol}: {e}")
             df_plot['macd'] = df_plot['signal'] = df_plot['macd_hist'] = np.nan
 
         # --- RSI ---
         try:
-            df_plot['rsi'] = talib.RSI(df_plot['close'].values, timeperiod=14)
+            df_plot['rsi'] = df_plot.ta.rsi(length=14)
         except Exception as e:
             log(f"Ошибка RSI для {symbol}: {e}")
             df_plot['rsi'] = np.nan
 
         # --- Bollinger Bands ---
         try:
-            upper, middle, lower = talib.BBANDS(
-                df_plot['close'].values, timeperiod=20, nbdevup=2, nbdevdn=2, matype=0
-            )
-            df_plot['sma20'] = middle
-            df_plot['upper'] = upper
-            df_plot['lower'] = lower
+            bb = df_plot.ta.bbands(length=20, std=2)
+            df_plot['sma20'] = bb['BBM_20_2.0']
+            df_plot['upper'] = bb['BBU_20_2.0']
+            df_plot['lower'] = bb['BBL_20_2.0']
         except Exception as e:
             log(f"Ошибка Bollinger для {symbol}: {e}")
             df_plot['sma20'] = df_plot['upper'] = df_plot['lower'] = np.nan
 
         add_plots = []
 
-        # Bollinger Bands (на главной панели)
+        # Bollinger
         if not df_plot[['sma20', 'upper', 'lower']].isna().all().all():
             add_plots.extend([
                 mpf.make_addplot(df_plot['sma20'], color='orange', linestyle='--', width=1),
@@ -84,20 +74,16 @@ def create_chart(df_plot, symbol, timeframe='5m'):
         fib_ratios = [0.0, 0.236, 0.382, 0.5, 0.618, 1.0]
         fib_levels = [fib_high - r * fib_diff for r in fib_ratios]
 
-        # --- Панели (ТОЛЬКО RSI и MACD + Volume) ---
-        panel_ratios = [5]  # 0: свечи
+        # --- Панели ---
+        panel_ratios = [5]
         volume_panel = 0
+        if any(getattr(ap, 'panel', None) == 1 for ap in add_plots):
+            panel_ratios.append(1); volume_panel += 1
+        if any(getattr(ap, 'panel', None) == 2 for ap in add_plots):
+            panel_ratios.append(1); volume_panel += 1
+        panel_ratios.append(1.5); volume_panel += 1
 
-        if any(getattr(ap, 'panel', None) == 1 for ap in add_plots):  # RSI
-            panel_ratios.append(1)
-            volume_panel += 1
-        if any(getattr(ap, 'panel', None) == 2 for ap in add_plots):  # MACD
-            panel_ratios.append(1)
-            volume_panel += 1
-        panel_ratios.append(1.5)  # Volume
-        volume_panel += 1
-
-        # --- Параметры графика ---
+        # --- График ---
         plot_kwargs = {
             'type': 'candle',
             'style': 'yahoo',
@@ -116,7 +102,7 @@ def create_chart(df_plot, symbol, timeframe='5m'):
 
         fig, axes = mpf.plot(df_plot, **plot_kwargs)
 
-        # --- Метки Фибоначчи слева ---
+        # --- Метки Фибоначчи ---
         if axes and len(axes) > 0:
             ax = axes[0]
             price_decimals = max(4, -int(np.log10(abs(fib_high) or 1)) + 2) if fib_high > 0 else 8
@@ -126,16 +112,15 @@ def create_chart(df_plot, symbol, timeframe='5m'):
                         va='center', ha='left', transform=ax.get_yaxis_transform(),
                         bbox=dict(boxstyle="round,pad=0.2", facecolor='white', alpha=0.8))
 
-        # --- Сохранение в буфер ---
         buf = io.BytesIO()
         fig.savefig(buf, format='png', bbox_inches='tight', dpi=120, facecolor='white')
         plt.close('all')
         buf.seek(0)
-        log(f"График {symbol} создан (без ADX)")
+        log(f"График {symbol} создан (pandas_ta)")
         return buf
 
     except Exception as e:
-        log(f"КРИТИЧЕСКАЯ ОШИБКА в create_chart({symbol}): {e}")
+        log(f"ОШИБКА create_chart({symbol}): {e}")
         log(f"Traceback: {traceback.format_exc()}")
         plt.close('all')
         return None
