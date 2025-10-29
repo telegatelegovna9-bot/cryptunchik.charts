@@ -5,8 +5,8 @@ pandas==2.2.2
 numpy==1.26.4
 aiohttp==3.9.5
 mplfinance==0.12.10b0
-TA-Lib==0.4.28
 matplotlib==3.9.2
+pandas_ta==0.3.14b0
 
 
 
